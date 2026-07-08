@@ -28,12 +28,9 @@ jobs:
     - name: Build Debug APK
       run: ./gradlew assembleDebug
       
-    - name: Create Release and Upload APK
-      uses: softprops/action-gh-release@v2
-      with:
-        files: app/build/outputs/apk/debug/app-debug.apk
-        name: Release ${{ github.ref_name }}
-        draft: false
-        prerelease: false
+    - name: Upload APK to Release
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        echo "Uploading APK to release ${{ github.ref_name }}"
+        gh release upload ${{ github.ref_name }} app/build/outputs/apk/debug/app-debug.apk --clobber
