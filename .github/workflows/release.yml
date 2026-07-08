@@ -33,4 +33,5 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         echo "Uploading APK to release ${{ github.ref_name }}"
+        gh release view ${{ github.ref_name }} || gh release create ${{ github.ref_name }} --title "Release ${{ github.ref_name }}" --notes "Automated release for ${{ github.ref_name }}"
         gh release upload ${{ github.ref_name }} app/build/outputs/apk/debug/app-debug.apk --clobber
