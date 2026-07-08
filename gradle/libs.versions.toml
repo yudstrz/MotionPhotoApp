@@ -17,7 +17,9 @@ cameraX = "1.5.0"
 media3 = "1.4.0"
 metadataExtractor = "2.18.0"
 commonsImaging = "1.0-alpha1"
-
+datastore = "1.0.0"
+playServicesLocation = "21.1.0"
+mlkitBarcode = "17.2.0"
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidxActivity" }
@@ -58,6 +60,12 @@ androidx-media3-transformer = { module = "androidx.media3:media3-transformer", v
 metadata-extractor = { module = "com.drewnoakes:metadata-extractor", version.ref = "metadataExtractor" }
 commons-imaging = { module = "org.apache.commons:commons-imaging", version.ref = "commonsImaging" }
 
+# DataStore
+androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
+
+# Location & ML Kit
+play-services-location = { module = "com.google.android.gms:play-services-location", version.ref = "playServicesLocation" }
+mlkit-barcode-scanning = { module = "com.google.mlkit:barcode-scanning", version.ref = "mlkitBarcode" }
 [plugins]
 android-application = { id = "com.android.application", version.ref = "androidGradlePlugin" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

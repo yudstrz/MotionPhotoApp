@@ -26,12 +26,26 @@ class CameraViewModel(
         data class Error(val message: String) : CameraUIState()
     }
     
-    fun captureMotionPhoto() {
+    fun captureMotionPhoto(
+        useHdr: Boolean = false,
+        addWatermark: Boolean = false,
+        location: android.location.Location? = null,
+        playSound: Boolean = true
+    ) {
         viewModelScope.launch {
+            if (playSound) {
+                val sound = android.media.MediaActionSound()
+                sound.play(android.media.MediaActionSound.SHUTTER_CLICK)
+            }
+        
             _uiState.value = CameraUIState.Capturing
             _captureProgress.value = 0.33f
             
-            val result = repository.captureAndCreateMotionPhoto()
+            val result = repository.captureAndCreateMotionPhoto(
+                useHdr = useHdr,
+                addWatermark = addWatermark,
+                location = location
+            )
             
             _captureProgress.value = 1f
             

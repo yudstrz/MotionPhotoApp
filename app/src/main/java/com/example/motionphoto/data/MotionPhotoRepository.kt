@@ -8,6 +8,10 @@ import com.example.motionphoto.utils.FrameExtractor
 import com.example.motionphoto.utils.XmpMetadataHandler
 import java.io.File
 
+import android.graphics.*
+import android.location.Location
+import android.media.ExifInterface
+
 class MotionPhotoRepository(
     private val context: Context,
     private val cameraManager: CameraManager,
@@ -21,11 +25,49 @@ class MotionPhotoRepository(
         val capturedAt: Long = System.currentTimeMillis()
     )
     
-    suspend fun captureAndCreateMotionPhoto(): Result<CaptureResult> {
+    suspend fun captureAndCreateMotionPhoto(
+        useHdr: Boolean = false,
+        addWatermark: Boolean = false,
+        location: Location? = null
+    ): Result<CaptureResult> {
         try {
             // Step 1: Capture photo + video simultaneously
-            val (photoFile, videoFile) = cameraManager.captureMotionPhoto()
+            val (photoFile, videoFile) = cameraManager.captureMotionPhoto(useHdr = useHdr)
                 .getOrThrow()
+                
+            // Apply Watermark
+            if (addWatermark) {
+                val options = BitmapFactory.Options()
+                options.inMutable = true
+                var bitmap = BitmapFactory.decodeFile(photoFile.absolutePath, options)
+                
+                val exif = ExifInterface(photoFile.absolutePath)
+                val orientation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+                val matrix = Matrix()
+                when (orientation) {
+                    ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+                    ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+                    ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+                }
+                bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+                
+                val canvas = Canvas(bitmap)
+                val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.WHITE
+                    textSize = 100f
+                    setShadowLayer(5f, 2f, 2f, Color.BLACK)
+                }
+                canvas.drawText("Shot on MotionPhotoApp", 80f, bitmap.height - 80f, paint)
+                
+                java.io.FileOutputStream(photoFile).use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
+                }
+            }
+            
+            // Apply Geotagging (Deferred: Android Framework ExifInterface lacks simple setLatLong)
+            if (location != null) {
+                // TODO: Implement GPS EXIF formatting for Location manually
+            }
             
             // Step 2: Mux into single Motion Photo file
             val outputPath = File(getCacheDir(), "motion_photo_${System.currentTimeMillis()}.jpg")
