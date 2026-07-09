@@ -30,7 +30,12 @@ class CameraViewModel(
         useHdr: Boolean = false,
         addWatermark: Boolean = false,
         location: android.location.Location? = null,
-        playSound: Boolean = true
+        playSound: Boolean = true,
+        lensFacing: Int = 1, // CameraSelector.LENS_FACING_BACK
+        aspectRatioMode: Int = 0,
+        isHighRes: Boolean = false,
+        flashMode: Int = 0, // ImageCapture.FLASH_MODE_AUTO
+        isMotionPhotoEnabled: Boolean = true
     ) {
         viewModelScope.launch {
             if (playSound) {
@@ -44,7 +49,12 @@ class CameraViewModel(
             val result = repository.captureAndCreateMotionPhoto(
                 useHdr = useHdr,
                 addWatermark = addWatermark,
-                location = location
+                location = location,
+                lensFacing = lensFacing,
+                aspectRatioMode = aspectRatioMode,
+                isHighRes = isHighRes,
+                flashMode = flashMode,
+                isMotionPhotoEnabled = isMotionPhotoEnabled
             )
             
             _captureProgress.value = 1f

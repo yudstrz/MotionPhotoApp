@@ -102,11 +102,29 @@ fun CameraContent(
     val playSound by settingsManager.shutterSoundFlow.collectAsState(initial = true)
     val addWatermark by settingsManager.watermarkFlow.collectAsState(initial = false)
     
+    val motionPhotoEnabled by settingsManager.motionPhotoFlow.collectAsState(initial = true)
+    val aspectRatioMode by settingsManager.aspectRatioFlow.collectAsState(initial = 0)
+    val lensFacing by settingsManager.lensFacingFlow.collectAsState(initial = 1)
+    val flashMode by settingsManager.flashModeFlow.collectAsState(initial = 0)
+    val highResEnabled by settingsManager.highResFlow.collectAsState(initial = false)
+    
     // Timer state
     var countdown by remember { mutableStateOf(0) }
 
     val onCaptureAction: () -> Unit = {
         if (countdown == 0 && !isCapturing) {
+            val capture = {
+                viewModel.captureMotionPhoto(
+                    useHdr = useHdr, 
+                    addWatermark = addWatermark, 
+                    playSound = playSound,
+                    lensFacing = lensFacing,
+                    aspectRatioMode = aspectRatioMode,
+                    isHighRes = highResEnabled,
+                    flashMode = flashMode,
+                    isMotionPhotoEnabled = motionPhotoEnabled
+                )
+            }
             if (timerSetting > 0) {
                 coroutineScope.launch {
                     countdown = timerSetting
@@ -114,10 +132,10 @@ fun CameraContent(
                         delay(1000)
                         countdown -= 1
                     }
-                    viewModel.captureMotionPhoto(useHdr = useHdr, addWatermark = addWatermark, playSound = playSound)
+                    capture()
                 }
             } else {
-                viewModel.captureMotionPhoto(useHdr = useHdr, addWatermark = addWatermark, playSound = playSound)
+                capture()
             }
         }
     }
@@ -140,9 +158,17 @@ fun CameraContent(
     ) {
         AndroidView(
             factory = { ctx ->
-                PreviewView(ctx).apply {
-                    cameraManager.startCameraPreview(this, useHdr = useHdr, useQrScanner = scanQr)
-                }
+                PreviewView(ctx)
+            },
+            update = { view ->
+                cameraManager.startCameraPreview(
+                    previewView = view,
+                    useHdr = useHdr,
+                    useQrScanner = scanQr,
+                    lensFacing = lensFacing,
+                    aspectRatioMode = aspectRatioMode,
+                    isHighRes = highResEnabled
+                )
             },
             modifier = Modifier
                 .fillMaxSize()
@@ -197,13 +223,50 @@ fun CameraContent(
             )
         }
         
-        // Top Bar for Update Checker & Settings
+        // Top Bar for Camera Controls & Settings
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.End
+                .background(Color.Black.copy(alpha = 0.3f))
+                .padding(vertical = 8.dp, horizontal = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            // Flash Toggle
+            TextButton(onClick = { 
+                coroutineScope.launch { settingsManager.setFlashMode((flashMode + 1) % 3) } 
+            }) {
+                Text(when (flashMode) {
+                    1 -> "⚡ On"
+                    2 -> "⚡ Off"
+                    else -> "⚡ Auto"
+                }, color = Color.White)
+            }
+            
+            // 50MP (High Res) Toggle
+            TextButton(onClick = { 
+                coroutineScope.launch { settingsManager.setHighRes(!highResEnabled) }
+            }) {
+                Text(if (highResEnabled) "50M" else "STD", color = if (highResEnabled) Color.Yellow else Color.White)
+            }
+            
+            // Motion Photo Toggle
+            TextButton(onClick = { 
+                coroutineScope.launch { settingsManager.setMotionPhoto(!motionPhotoEnabled) }
+            }) {
+                Text(if (motionPhotoEnabled) "Motion On" else "Motion Off", color = if (motionPhotoEnabled) Color.Yellow else Color.White)
+            }
+            
+            // Aspect Ratio Toggle
+            TextButton(onClick = { 
+                coroutineScope.launch { settingsManager.setAspectRatio((aspectRatioMode + 1) % 2) } // Only 4:3 and 16:9 natively supported for now
+            }) {
+                Text(when(aspectRatioMode) {
+                    1 -> "16:9"
+                    else -> "4:3"
+                }, color = Color.White)
+            }
+            
             IconButton(onClick = onSettingsClick) {
                 Icon(
                     imageVector = Icons.Default.Settings,
@@ -211,56 +274,48 @@ fun CameraContent(
                     tint = Color.White
                 )
             }
-            
-            IconButton(
-                onClick = {
-                    coroutineScope.launch {
-                        isCheckingUpdate = true
-                        val result = UpdateChecker.checkForUpdates()
-                        isCheckingUpdate = false
-                        if (result.isSuccess) {
-                            val info = result.getOrNull()
-                            if (info != null && info.hasUpdate) {
-                                updateInfo = info
-                                showUpdateDialog = true
-                            } else {
-                                updateMessage = "You are on the latest version."
-                                showUpdateDialog = true
-                            }
-                        } else {
-                            updateMessage = "Failed to check for updates."
-                            showUpdateDialog = true
-                        }
-                    }
-                }
-            ) {
-                if (isCheckingUpdate) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.Info,
-                        contentDescription = "Check for Updates",
-                        tint = Color.White
-                    )
-                }
-            }
         }
         
-        // Minimalist Shutter Button
-        Box(
+        // Bottom Controls
+        Row(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 40.dp)
-                .size(72.dp)
-                .border(width = 4.dp, color = Color.White, shape = CircleShape)
-                .clickable { onCaptureAction() },
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .padding(bottom = 40.dp, start = 32.dp, end = 32.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            // Spacer for alignment
+            Spacer(modifier = Modifier.size(48.dp))
+            
+            // Minimalist Shutter Button
             Box(
                 modifier = Modifier
-                    .size(54.dp)
-                    .background(Color.White, CircleShape)
-            )
+                    .size(72.dp)
+                    .border(width = 4.dp, color = Color.White, shape = CircleShape)
+                    .clickable { onCaptureAction() },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(54.dp)
+                        .background(Color.White, CircleShape)
+                )
+            }
+            
+            // Camera Flip Button
+            IconButton(
+                onClick = { 
+                    coroutineScope.launch { settingsManager.setLensFacing(if (lensFacing == 1) 0 else 1) }
+                },
+                modifier = Modifier.size(48.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PhotoCamera, // A flip icon would be better, using generic camera icon for now
+                    contentDescription = "Flip Camera",
+                    tint = Color.White
+                )
+            }
         }
     }
 

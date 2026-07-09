@@ -27,6 +27,10 @@ import java.util.concurrent.Executors
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
+
 class CameraManager(
     private val context: Context,
     private val lifecycleOwner: LifecycleOwner,
@@ -54,15 +58,41 @@ class CameraManager(
         }, ContextCompat.getMainExecutor(context))
     }
     
+    private fun getAspectRatioStrategy(mode: Int): AspectRatioStrategy {
+        return when (mode) {
+            1 -> AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY // 16:9
+            else -> AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY // 4:3, 1:1, Full (1:1 and Full often handled by UI cropping in standard apps, but here we just use 4:3 and 16:9 natively)
+        }
+    }
+    
+    private fun getResolutionSelector(aspectRatioMode: Int, isHighRes: Boolean): ResolutionSelector {
+        val builder = ResolutionSelector.Builder()
+            .setAspectRatioStrategy(getAspectRatioStrategy(aspectRatioMode))
+            
+        if (isHighRes) {
+            // Request very high resolution to trigger 50MP if available
+            builder.setResolutionStrategy(ResolutionStrategy(Size(8192, 6144), ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER))
+        }
+        
+        return builder.build()
+    }
+    
     fun startCameraPreview(
         previewView: PreviewView,
         useHdr: Boolean = false,
-        useQrScanner: Boolean = false
+        useQrScanner: Boolean = false,
+        lensFacing: Int = CameraSelector.LENS_FACING_BACK,
+        aspectRatioMode: Int = 0,
+        isHighRes: Boolean = false
     ) {
-        val preview = Preview.Builder().build()
+        val resolutionSelector = getResolutionSelector(aspectRatioMode, isHighRes)
+        val preview = Preview.Builder()
+            .setResolutionSelector(resolutionSelector)
+            .build()
+            
         preview.setSurfaceProvider(previewView.surfaceProvider)
         
-        var cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+        var cameraSelector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
         
         // Apply HDR if requested and supported
         if (useHdr && extensionsManager != null) {
@@ -117,14 +147,22 @@ class CameraManager(
     suspend fun captureMotionPhoto(
         videoDurationMs: Int = 3000,
         fps: Int = 30,
-        useHdr: Boolean = false
-    ): Result<Pair<File, File>> = withContext(Dispatchers.Default) {
+        useHdr: Boolean = false,
+        lensFacing: Int = CameraSelector.LENS_FACING_BACK,
+        aspectRatioMode: Int = 0,
+        isHighRes: Boolean = false,
+        flashMode: Int = ImageCapture.FLASH_MODE_AUTO,
+        isMotionPhotoEnabled: Boolean = true
+    ): Result<Pair<File, File?>> = withContext(Dispatchers.Default) {
         try {
             val photoFile = File.createTempFile("photo", ".jpg", context.cacheDir)
-            val videoFile = File.createTempFile("video", ".mp4", context.cacheDir)
+            val videoFile = if (isMotionPhotoEnabled) File.createTempFile("video", ".mp4", context.cacheDir) else null
+            
+            val resolutionSelector = getResolutionSelector(aspectRatioMode, isHighRes)
             
             val imageCapture = ImageCapture.Builder()
-                .setTargetResolution(Size(1080, 1920))
+                .setResolutionSelector(resolutionSelector)
+                .setFlashMode(flashMode)
                 .build()
             
             val recorder = Recorder.Builder()
@@ -132,22 +170,23 @@ class CameraManager(
                 .build()
             
             val videoCapture = VideoCapture.withOutput(recorder)
-            val preview = Preview.Builder().build()
             
-            var cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+            val preview = Preview.Builder()
+                .setResolutionSelector(resolutionSelector)
+                .build()
+            
+            var cameraSelector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
             if (useHdr && extensionsManager?.isExtensionAvailable(cameraSelector, ExtensionMode.HDR) == true) {
                 cameraSelector = extensionsManager!!.getExtensionEnabledCameraSelector(cameraSelector, ExtensionMode.HDR)
             }
             
             withContext(Dispatchers.Main) {
                 cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(
-                    lifecycleOwner,
-                    cameraSelector,
-                    preview,
-                    imageCapture,
-                    videoCapture
-                )
+                if (isMotionPhotoEnabled) {
+                    cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, imageCapture, videoCapture)
+                } else {
+                    cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, imageCapture)
+                }
             }
             
             coroutineScope {
@@ -168,23 +207,25 @@ class CameraManager(
                     }
                 }
                 
-                val videoTask = async {
-                    suspendCancellableCoroutine<Boolean> { cont ->
-                        val pendingRecording = recorder.prepareRecording(context, androidx.camera.video.FileOutputOptions.Builder(videoFile).build())
-                        val recording = pendingRecording.start(executor) {}
-                        
-                        Handler(Looper.getMainLooper()).postDelayed(
-                            { 
-                                recording.stop()
-                                cont.resume(true)
-                            },
-                            videoDurationMs.toLong()
-                        )
+                val videoTask = if (isMotionPhotoEnabled && videoFile != null) {
+                    async {
+                        suspendCancellableCoroutine<Boolean> { cont ->
+                            val pendingRecording = recorder.prepareRecording(context, androidx.camera.video.FileOutputOptions.Builder(videoFile).build())
+                            val recording = pendingRecording.start(executor) {}
+                            
+                            Handler(Looper.getMainLooper()).postDelayed(
+                                { 
+                                    recording.stop()
+                                    cont.resume(true)
+                                },
+                                videoDurationMs.toLong()
+                            )
+                        }
                     }
-                }
+                } else null
                 
                 photoTask.await()
-                videoTask.await()
+                videoTask?.await()
             }
             
             Result.success(Pair(photoFile, videoFile))

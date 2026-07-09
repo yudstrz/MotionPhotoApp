@@ -28,12 +28,23 @@ class MotionPhotoRepository(
     suspend fun captureAndCreateMotionPhoto(
         useHdr: Boolean = false,
         addWatermark: Boolean = false,
-        location: Location? = null
+        location: Location? = null,
+        lensFacing: Int = 1,
+        aspectRatioMode: Int = 0,
+        isHighRes: Boolean = false,
+        flashMode: Int = 0,
+        isMotionPhotoEnabled: Boolean = true
     ): Result<CaptureResult> {
         try {
-            // Step 1: Capture photo + video simultaneously
-            val (photoFile, videoFile) = cameraManager.captureMotionPhoto(useHdr = useHdr)
-                .getOrThrow()
+            // Step 1: Capture photo (+ optional video)
+            val (photoFile, videoFile) = cameraManager.captureMotionPhoto(
+                useHdr = useHdr,
+                lensFacing = lensFacing,
+                aspectRatioMode = aspectRatioMode,
+                isHighRes = isHighRes,
+                flashMode = flashMode,
+                isMotionPhotoEnabled = isMotionPhotoEnabled
+            ).getOrThrow()
                 
             // Apply Watermark
             if (addWatermark) {
@@ -69,21 +80,26 @@ class MotionPhotoRepository(
                 // TODO: Implement GPS EXIF formatting for Location manually
             }
             
-            // Step 2: Mux into single Motion Photo file
-            val outputPath = File(getCacheDir(), "motion_photo_${System.currentTimeMillis()}.jpg")
-            val motionPhotoFile = mediaProcessor.createMotionPhotoFile(
-                photoFile.absolutePath,
-                videoFile.absolutePath,
-                outputPath.absolutePath
-            ).getOrThrow()
+            val finalOutput: File
             
-            // Clean up temp files
-            photoFile.delete()
-            videoFile.delete()
+            // Step 2: Mux into single Motion Photo file (or just return photo)
+            if (isMotionPhotoEnabled && videoFile != null) {
+                val outputPath = File(getCacheDir(), "motion_photo_${System.currentTimeMillis()}.jpg")
+                finalOutput = mediaProcessor.createMotionPhotoFile(
+                    photoFile.absolutePath,
+                    videoFile.absolutePath,
+                    outputPath.absolutePath
+                ).getOrThrow()
+                
+                photoFile.delete()
+                videoFile.delete()
+            } else {
+                finalOutput = photoFile
+            }
             
             return Result.success(
                 CaptureResult(
-                    motionPhotoFile = motionPhotoFile,
+                    motionPhotoFile = finalOutput,
                     keyPhotoIndex = 0
                 )
             )

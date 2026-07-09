@@ -22,6 +22,11 @@ class SettingsManager(private val context: Context) {
         val KEY_TAP_CAPTURE = booleanPreferencesKey("key_tap_capture")
         val KEY_SCAN_QR = booleanPreferencesKey("key_scan_qr")
         val KEY_HDR = booleanPreferencesKey("key_hdr")
+        val KEY_MOTION_PHOTO = booleanPreferencesKey("key_motion_photo")
+        val KEY_ASPECT_RATIO = intPreferencesKey("key_aspect_ratio")
+        val KEY_LENS_FACING = intPreferencesKey("key_lens_facing")
+        val KEY_FLASH_MODE = intPreferencesKey("key_flash_mode")
+        val KEY_HIGH_RES = booleanPreferencesKey("key_high_res")
     }
 
     val gridFlow: Flow<Boolean> = context.dataStore.data.map { it[KEY_GRID] ?: false }
@@ -33,6 +38,11 @@ class SettingsManager(private val context: Context) {
     val tapCaptureFlow: Flow<Boolean> = context.dataStore.data.map { it[KEY_TAP_CAPTURE] ?: false }
     val scanQrFlow: Flow<Boolean> = context.dataStore.data.map { it[KEY_SCAN_QR] ?: false }
     val hdrFlow: Flow<Boolean> = context.dataStore.data.map { it[KEY_HDR] ?: false }
+    val motionPhotoFlow: Flow<Boolean> = context.dataStore.data.map { it[KEY_MOTION_PHOTO] ?: true }
+    val aspectRatioFlow: Flow<Int> = context.dataStore.data.map { it[KEY_ASPECT_RATIO] ?: 0 } // 0: 4:3, 1: 16:9, 2: 1:1, 3: Full
+    val lensFacingFlow: Flow<Int> = context.dataStore.data.map { it[KEY_LENS_FACING] ?: 1 } // 1: Back, 0: Front
+    val flashModeFlow: Flow<Int> = context.dataStore.data.map { it[KEY_FLASH_MODE] ?: 0 } // 0: Auto, 1: On, 2: Off
+    val highResFlow: Flow<Boolean> = context.dataStore.data.map { it[KEY_HIGH_RES] ?: false }
 
     suspend fun setGrid(enabled: Boolean) {
         context.dataStore.edit { it[KEY_GRID] = enabled }
@@ -68,5 +78,25 @@ class SettingsManager(private val context: Context) {
     
     suspend fun setHdr(enabled: Boolean) {
         context.dataStore.edit { it[KEY_HDR] = enabled }
+    }
+    
+    suspend fun setMotionPhoto(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_MOTION_PHOTO] = enabled }
+    }
+    
+    suspend fun setAspectRatio(ratio: Int) {
+        context.dataStore.edit { it[KEY_ASPECT_RATIO] = ratio }
+    }
+    
+    suspend fun setLensFacing(facing: Int) {
+        context.dataStore.edit { it[KEY_LENS_FACING] = facing }
+    }
+    
+    suspend fun setFlashMode(mode: Int) {
+        context.dataStore.edit { it[KEY_FLASH_MODE] = mode }
+    }
+    
+    suspend fun setHighRes(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_HIGH_RES] = enabled }
     }
 }
