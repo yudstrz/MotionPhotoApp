@@ -24,7 +24,7 @@ class MediaProcessor(private val context: Context) {
             val xmpHandler = XmpMetadataHandler()
             val xmpXml = xmpHandler.buildXmpXmlString(
                 isMotionPhoto = true,
-                videoOffsetBytes = videoSize,
+                videoSizeBytes = videoSize,
                 videoDurationMs = 3000
             )
             
@@ -53,13 +53,34 @@ class MediaProcessor(private val context: Context) {
             val xmpBytes = xmpXml.toByteArray(Charsets.UTF_8)
             val xmpSegment = createXmpSegment(xmpBytes)
             
-            // A valid JPEG starts with FF D8. We'll insert our APP1 segment right after it.
-            // This is safer than trying to replace existing APP1 which might be EXIF,
-            // or miscalculating the length of existing segments.
-            
+            // A valid JPEG starts with FF D8
             if (photoBytes.size >= 2 && photoBytes[0] == 0xFF.toByte() && photoBytes[1] == 0xD8.toByte()) {
-                val beforeInsert = photoBytes.sliceArray(0..1)
-                val afterInsert = photoBytes.sliceArray(2 until photoBytes.size)
+                var pos = 2
+                // We want to skip over the EXIF segment if it exists (APP1, or APP0)
+                // so we insert XMP after it.
+                while (pos < photoBytes.size - 1) {
+                    if (photoBytes[pos] == 0xFF.toByte()) {
+                        val marker = photoBytes[pos + 1].toInt() and 0xFF
+                        if (marker == 0xE1 || marker == 0xE0) { // APP1 or APP0
+                            // Skip this segment
+                            val length = ((photoBytes[pos + 2].toInt() and 0xFF) shl 8) or (photoBytes[pos + 3].toInt() and 0xFF)
+                            pos += 2 + length
+                        } else {
+                            // Insert here, before other segments (like DQT, DHT, SOF)
+                            break
+                        }
+                    } else {
+                        break
+                    }
+                }
+                
+                // Safety check in case pos went out of bounds or found no good spot
+                if (pos >= photoBytes.size) {
+                    pos = 2
+                }
+                
+                val beforeInsert = photoBytes.sliceArray(0 until pos)
+                val afterInsert = photoBytes.sliceArray(pos until photoBytes.size)
                 return beforeInsert + xmpSegment + afterInsert
             } else {
                 Log.w("MediaProcessor", "Not a valid JPEG (missing FF D8), appending XMP at the end (might not work).")
@@ -73,17 +94,15 @@ class MediaProcessor(private val context: Context) {
     
     private fun createXmpSegment(xmpData: ByteArray): ByteArray {
         val marker = byteArrayOf(0xFF.toByte(), 0xE1.toByte())
-        // Length includes the 2 bytes for the length itself
-        val length = (xmpData.size + 2 + 29).toShort() // We also need to add standard XMP header
         
         // Standard XMP APP1 segment requires a specific namespace header
         val namespace = "http://ns.adobe.com/xap/1.0/\u0000".toByteArray(Charsets.UTF_8)
         
-        val actualLength = (xmpData.size + namespace.size + 2).toShort()
+        val actualLength = xmpData.size + namespace.size + 2 // +2 for the length bytes themselves
         
         val lengthBytes = byteArrayOf(
-            (actualLength.toInt() shr 8 and 0xFF).toByte(),
-            (actualLength.toInt() and 0xFF).toByte()
+            (actualLength shr 8 and 0xFF).toByte(),
+            (actualLength and 0xFF).toByte()
         )
         return marker + lengthBytes + namespace + xmpData
     }

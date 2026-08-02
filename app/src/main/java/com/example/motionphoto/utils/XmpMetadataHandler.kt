@@ -43,7 +43,7 @@ class XmpMetadataHandler {
     
     fun buildXmpXmlString(
         isMotionPhoto: Boolean,
-        videoOffsetBytes: Long,
+        videoSizeBytes: Long,
         videoDurationMs: Long
     ): String {
         return """<?xml version="1.0" encoding="UTF-8"?>
@@ -51,11 +51,21 @@ class XmpMetadataHandler {
                 <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
                     <rdf:Description rdf:about=""
                         xmlns:GCamera="http://ns.google.com/photos/1.0/camera/"
-                        xmlns:Item="http://ns.google.com/photos/1.0/container/">
-                        <GCamera:MotionPhoto>${if (isMotionPhoto) 1 else 0}</GCamera:MotionPhoto>
-                        <GCamera:MicroVideoDuration>$videoDurationMs</GCamera:MicroVideoDuration>
-                        <Item:Length>$videoOffsetBytes</Item:Length>
-                        <Item:Semantic>MotionPhoto</Item:Semantic>
+                        xmlns:Container="http://ns.google.com/photos/1.0/container/"
+                        xmlns:Item="http://ns.google.com/photos/1.0/container/item/"
+                        GCamera:MotionPhoto="${if (isMotionPhoto) 1 else 0}"
+                        GCamera:MotionPhotoVersion="1"
+                        GCamera:MotionPhotoPresentationTimestampUs="-1">
+                        <Container:Directory>
+                            <rdf:Seq>
+                                <rdf:li>
+                                    <Container:Item Item:Mime="image/jpeg" Item:Semantic="Primary" Item:Length="0" Item:Padding="0"/>
+                                </rdf:li>
+                                <rdf:li>
+                                    <Container:Item Item:Mime="video/mp4" Item:Semantic="MotionPhoto" Item:Length="$videoSizeBytes" Item:Padding="0"/>
+                                </rdf:li>
+                            </rdf:Seq>
+                        </Container:Directory>
                     </rdf:Description>
                 </rdf:RDF>
             </x:xmpmeta>

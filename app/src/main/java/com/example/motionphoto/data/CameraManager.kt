@@ -14,6 +14,7 @@ import androidx.camera.video.Quality
 import androidx.camera.video.QualitySelector
 import androidx.camera.video.Recorder
 import androidx.camera.video.VideoCapture
+import androidx.camera.video.VideoRecordEvent
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
@@ -26,7 +27,6 @@ import java.io.File
 import java.util.concurrent.Executors
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.core.resolutionselector.AspectRatioStrategy
@@ -39,6 +39,10 @@ class CameraManager(
     private lateinit var cameraProvider: ProcessCameraProvider
     private var extensionsManager: ExtensionsManager? = null
     private val executor = Executors.newSingleThreadExecutor()
+    
+    private var imageCapture: ImageCapture? = null
+    private var videoCapture: VideoCapture<Recorder>? = null
+    private var recorder: Recorder? = null
     
     // State callbacks
     var onQrCodeDetected: ((String) -> Unit)? = null
@@ -103,6 +107,20 @@ class CameraManager(
         
         val useCases = mutableListOf<UseCase>(preview)
         
+        // Always bind ImageCapture and VideoCapture for fast capture
+        imageCapture = ImageCapture.Builder()
+            .setResolutionSelector(resolutionSelector)
+            .build()
+            
+        recorder = Recorder.Builder()
+            .setQualitySelector(QualitySelector.from(Quality.HD))
+            .build()
+            
+        videoCapture = VideoCapture.withOutput(recorder!!)
+        
+        useCases.add(imageCapture!!)
+        useCases.add(videoCapture!!)
+        
         // Apply QR Scanner if requested
         if (useQrScanner) {
             val imageAnalysis = ImageAnalysis.Builder()
@@ -158,41 +176,16 @@ class CameraManager(
             val photoFile = File.createTempFile("photo", ".jpg", context.cacheDir)
             val videoFile = if (isMotionPhotoEnabled) File.createTempFile("video", ".mp4", context.cacheDir) else null
             
-            val resolutionSelector = getResolutionSelector(aspectRatioMode, isHighRes)
+            // Set flash mode on existing imageCapture
+            imageCapture?.flashMode = flashMode
             
-            val imageCapture = ImageCapture.Builder()
-                .setResolutionSelector(resolutionSelector)
-                .setFlashMode(flashMode)
-                .build()
-            
-            val recorder = Recorder.Builder()
-                .setQualitySelector(QualitySelector.from(Quality.HD))
-                .build()
-            
-            val videoCapture = VideoCapture.withOutput(recorder)
-            
-            val preview = Preview.Builder()
-                .setResolutionSelector(resolutionSelector)
-                .build()
-            
-            var cameraSelector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
-            if (useHdr && extensionsManager?.isExtensionAvailable(cameraSelector, ExtensionMode.HDR) == true) {
-                cameraSelector = extensionsManager!!.getExtensionEnabledCameraSelector(cameraSelector, ExtensionMode.HDR)
-            }
-            
-            withContext(Dispatchers.Main) {
-                cameraProvider.unbindAll()
-                if (isMotionPhotoEnabled) {
-                    cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, imageCapture, videoCapture)
-                } else {
-                    cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, imageCapture)
-                }
-            }
+            val captureImage = imageCapture ?: throw IllegalStateException("ImageCapture not initialized")
+            val currentRecorder = recorder ?: throw IllegalStateException("Recorder not initialized")
             
             coroutineScope {
                 val photoTask = async {
                     suspendCancellableCoroutine<Boolean> { cont ->
-                        imageCapture.takePicture(
+                        captureImage.takePicture(
                             ImageCapture.OutputFileOptions.Builder(photoFile).build(),
                             executor,
                             object : ImageCapture.OnImageSavedCallback {
@@ -210,13 +203,25 @@ class CameraManager(
                 val videoTask = if (isMotionPhotoEnabled && videoFile != null) {
                     async {
                         suspendCancellableCoroutine<Boolean> { cont ->
-                            val pendingRecording = recorder.prepareRecording(context, androidx.camera.video.FileOutputOptions.Builder(videoFile).build())
-                            val recording = pendingRecording.start(executor) {}
+                            val pendingRecording = currentRecorder.prepareRecording(context, androidx.camera.video.FileOutputOptions.Builder(videoFile).build())
+                            
+                            val recording = pendingRecording.start(executor) { event ->
+                                if (event is VideoRecordEvent.Finalize) {
+                                    if (event.hasError()) {
+                                        cont.resumeWithException(RuntimeException("Video capture failed with error code: ${event.error}"))
+                                    } else {
+                                        cont.resume(true)
+                                    }
+                                }
+                            }
+                            
+                            cont.invokeOnCancellation {
+                                recording.stop()
+                            }
                             
                             Handler(Looper.getMainLooper()).postDelayed(
                                 { 
                                     recording.stop()
-                                    cont.resume(true)
                                 },
                                 videoDurationMs.toLong()
                             )

@@ -134,6 +134,9 @@ class MotionPhotoRepository(
                 put(MediaStore.Images.Media.DISPLAY_NAME, "${System.currentTimeMillis()}.jpg")
                 put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
                 put(MediaStore.Images.Media.RELATIVE_PATH, "DCIM/Camera")
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                }
             }
             
             val uri = context.contentResolver.insert(
@@ -143,6 +146,12 @@ class MotionPhotoRepository(
             
             context.contentResolver.openOutputStream(uri)?.use { output ->
                 output.write(motionPhotoFile.readBytes())
+            }
+            
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                contentValues.clear()
+                contentValues.put(MediaStore.Images.Media.IS_PENDING, 0)
+                context.contentResolver.update(uri, contentValues, null, null)
             }
             
             Result.success(uri)
