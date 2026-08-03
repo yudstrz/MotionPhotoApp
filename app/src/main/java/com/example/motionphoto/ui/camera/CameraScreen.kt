@@ -151,6 +151,21 @@ fun CameraContent(
         }
     }
 
+    var previewView by remember { mutableStateOf<PreviewView?>(null) }
+    
+    LaunchedEffect(previewView, useHdr, scanQr, lensFacing, aspectRatioMode, highResEnabled) {
+        previewView?.let { view ->
+            cameraManager.startCameraPreview(
+                previewView = view,
+                useHdr = useHdr,
+                useQrScanner = scanQr,
+                lensFacing = lensFacing,
+                aspectRatioMode = aspectRatioMode,
+                isHighRes = highResEnabled
+            )
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -158,17 +173,7 @@ fun CameraContent(
     ) {
         AndroidView(
             factory = { ctx ->
-                PreviewView(ctx)
-            },
-            update = { view ->
-                cameraManager.startCameraPreview(
-                    previewView = view,
-                    useHdr = useHdr,
-                    useQrScanner = scanQr,
-                    lensFacing = lensFacing,
-                    aspectRatioMode = aspectRatioMode,
-                    isHighRes = highResEnabled
-                )
+                PreviewView(ctx).also { previewView = it }
             },
             modifier = Modifier
                 .fillMaxSize()
@@ -226,8 +231,10 @@ fun CameraContent(
         // Top Bar for Camera Controls & Settings
         Row(
             modifier = Modifier
+                .align(Alignment.TopCenter)
                 .fillMaxWidth()
                 .background(Color.Black.copy(alpha = 0.3f))
+                .statusBarsPadding()
                 .padding(vertical = 8.dp, horizontal = 16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
@@ -281,6 +288,7 @@ fun CameraContent(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
+                .navigationBarsPadding()
                 .padding(bottom = 40.dp, start = 32.dp, end = 32.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
