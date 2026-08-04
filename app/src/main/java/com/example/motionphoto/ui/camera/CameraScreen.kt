@@ -43,38 +43,40 @@ fun CameraScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     
-    when (uiState) {
-        is CameraViewModel.CameraUIState.Ready -> {
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Keep CameraContent in the main tree so it doesn't get destroyed and recreated
+        // when state changes to Capturing, preventing preview unbinding.
+        if (uiState is CameraViewModel.CameraUIState.Ready || uiState is CameraViewModel.CameraUIState.Capturing) {
             CameraContent(
                 cameraManager = cameraManager,
                 viewModel = viewModel,
                 settingsManager = settingsManager,
                 onSettingsClick = onSettingsClick,
-                isCapturing = false
+                isCapturing = uiState is CameraViewModel.CameraUIState.Capturing
             )
         }
-        is CameraViewModel.CameraUIState.Capturing -> {
-            // Keep showing camera content, but in capturing state
-            CameraContent(
-                cameraManager = cameraManager,
-                viewModel = viewModel,
-                settingsManager = settingsManager,
-                onSettingsClick = onSettingsClick,
-                isCapturing = true
-            )
-            CapturingProgress()
-        }
-        is CameraViewModel.CameraUIState.Editing -> {
-            val motionPhotoFile = (uiState as CameraViewModel.CameraUIState.Editing).motionPhotoFile
-            EditingScreen(
-                motionPhotoFile = motionPhotoFile,
-                onSaveClick = { viewModel.saveToGallery(motionPhotoFile) }
-            )
-        }
-        is CameraViewModel.CameraUIState.Error -> {
-            ErrorDialog(
-                message = (uiState as CameraViewModel.CameraUIState.Error).message
-            )
+
+        when (uiState) {
+            is CameraViewModel.CameraUIState.Capturing -> {
+                CapturingProgress()
+            }
+            is CameraViewModel.CameraUIState.Editing -> {
+                val motionPhotoFile = (uiState as CameraViewModel.CameraUIState.Editing).motionPhotoFile
+                Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+                    EditingScreen(
+                        motionPhotoFile = motionPhotoFile,
+                        onSaveClick = { viewModel.saveToGallery(motionPhotoFile) }
+                    )
+                }
+            }
+            is CameraViewModel.CameraUIState.Error -> {
+                Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+                    ErrorDialog(
+                        message = (uiState as CameraViewModel.CameraUIState.Error).message
+                    )
+                }
+            }
+            else -> {}
         }
     }
 }
@@ -173,7 +175,10 @@ fun CameraContent(
     ) {
         AndroidView(
             factory = { ctx ->
-                PreviewView(ctx).also { previewView = it }
+                PreviewView(ctx).also { 
+                    it.scaleType = PreviewView.ScaleType.FIT_CENTER
+                    previewView = it 
+                }
             },
             modifier = Modifier
                 .fillMaxSize()
